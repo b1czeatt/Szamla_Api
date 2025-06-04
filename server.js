@@ -1,4 +1,3 @@
-
 const express = require('express');
 const db = require('./util/database');
 const path = require('path');
@@ -7,10 +6,15 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-
 app.get('/api/invoices', (req, res) => {
   const invoices = db.prepare(`
-    SELECT invoices.*, c1.name AS issuerName, c2.name AS clientName
+    SELECT invoices.*,
+      c1.name AS issuerName,
+      c1.address AS issuerAddress,
+      c1.taxNumber AS issuerTaxNumber,
+      c2.name AS clientName,
+      c2.address AS clientAddress,
+      c2.taxNumber AS clientTaxNumber
     FROM invoices
     JOIN clients c1 ON invoices.issuerId = c1.id
     JOIN clients c2 ON invoices.clientId = c2.id
@@ -24,19 +28,24 @@ app.get('/api/invoices/:id', (req, res) => {
     return res.status(400).send('Érvénytelen azonosító');
   }
   const invoice = db.prepare(`
-    SELECT invoices.*, c1.name AS issuerName, c2.name AS clientName
+    SELECT invoices.*,
+      c1.name AS issuerName,
+      c1.address AS issuerAddress,
+      c1.taxNumber AS issuerTaxNumber,
+      c2.name AS clientName,
+      c2.address AS clientAddress,
+      c2.taxNumber AS clientTaxNumber
     FROM invoices
     JOIN clients c1 ON invoices.issuerId = c1.id
     JOIN clients c2 ON invoices.clientId = c2.id
     WHERE invoices.id = ?
   `).get(id);
-  
+
   if (!invoice) {
     return res.status(404).send('Számla nem található');
   }
   res.json(invoice);
 });
-
 
 app.get('/api/clients', (req, res) => {
   const clients = db.prepare('SELECT * FROM clients').all();
@@ -61,17 +70,45 @@ app.post('/api/clients', (req, res) => {
 
 app.post('/api/invoices', (req, res) => {
   const { number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat } = req.body;
-  if (!number || !issuerId || !clientId || !date || !fulfillmentDate || !dueDate || !total || !vat) {
+
+  if (!number || !issuerId || !clientId || !date || !fulfillmentDate || !dueDate || total === undefined || vat === undefined) {
     return res.status(400).send('Minden mező kitöltése kötelező!');
   }
+
+  if (typeof total !== 'number' && typeof total !== 'string') {
+    return res.status(400).send('Az összeg érvénytelen!');
+  }
+  const totalNum = Number(total);
+  if (isNaN(totalNum) || totalNum <= 0) {
+    return res.status(400).send('Az összeg nem lehet nulla vagy negatív!');
+  }
+
+  const invoiceDate = new Date(date);
+  const paymentDueDate = new Date(dueDate);
+
+  if (isNaN(invoiceDate.getTime()) || isNaN(paymentDueDate.getTime())) {
+    return res.status(400).send('Dátumok nem megfelelő formátumúak!');
+  }
+
+  const diffMs = paymentDueDate.getTime() - invoiceDate.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (diffDays < 0) {
+    return res.status(400).send('A fizetési határidő nem lehet korábbi, mint a számla keltezése!');
+  }
+
+  if (diffDays > 30) {
+    return res.status(400).send('A fizetési határidő legfeljebb 30 nappal lehet későbbi a számla keltezésénél!');
+  }
+
   try {
     db.prepare(`
       INSERT INTO invoices (number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat);
+    `).run(number, issuerId, clientId, date, fulfillmentDate, dueDate, totalNum, vat);
     res.sendStatus(200);
   } catch (err) {
-    res.status(400).send('A számlaszám már létezik!');
+    res.status(400).send('A számlaszám már létezik vagy egyéb adatbázis hiba!');
   }
 });
 
@@ -85,55 +122,8 @@ app.post('/api/invoices/:id/cancel', (req, res) => {
   res.sendStatus(200);
 });
 
-
-app.put('/api/invoices/:id', (req, res) => {
-  const id = req.params.id;
-  const { number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat } = req.body;
-
-  if (!number || /^\s*$/.test(number)) {
-    return res.status(400).send('A számla számát ki kell tölteni!');
-  }
-  if (/^-/.test(number)) {
-    return res.status(400).send('A számla száma nem lehet negatív!');
-  }
-  if (!issuerId || !clientId || !date || !fulfillmentDate || !dueDate || !total || !vat) {
-    return res.status(400).send('Minden mezőt ki kell tölteni!');
-  }
-  const isValidDate = dateStr => /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
-  if (!isValidDate(date) || !isValidDate(fulfillmentDate) || !isValidDate(dueDate)) {
-    return res.status(400).send('Dátumok nem megfelelő formátumúak (YYYY-MM-DD)!');
-  }
-  if (Number(total) < 0) {
-    return res.status(400).send('A végösszeg nem lehet negatív!');
-  }
-  if (Number(vat) < 0) {
-    return res.status(400).send('Az ÁFA kulcs nem lehet negatív!');
-  }
-
-  const existingInvoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
-  if (!existingInvoice) {
-    return res.status(404).send('Számla nem található');
-  }
-  const stmt = db.prepare(`
-    UPDATE invoices SET
-      number = ?,
-      issuerId = ?,
-      clientId = ?,
-      date = ?,
-      fulfillmentDate = ?,
-      dueDate = ?,
-      total = ?,
-      vat = ?
-    WHERE id = ?
-  `);
-  stmt.run(number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat, id);
-
-  res.sendStatus(200);
-});
-
 app.delete('/api/clients/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-
   if (isNaN(id)) return res.status(400).send('Érvénytelen ID');
 
   const hasInvoices = db.prepare(`
@@ -151,7 +141,6 @@ app.delete('/api/clients/:id', (req, res) => {
 
   res.sendStatus(200);
 });
-
 
 const PORT = 3000;
 app.listen(PORT, () => {

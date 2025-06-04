@@ -1,4 +1,3 @@
-
 const Database = require('better-sqlite3');
 const path = require('path');
 const db = new Database(path.join(__dirname, '../data/szamlakezelo.db'));
@@ -33,33 +32,54 @@ if (existingClients.count === 0) {
   insertClient.run('Teszt Cég Kft.', 'Budapest, Fő utca 1.', '12345678-1-42');
   insertClient.run('Minta Bt.', 'Debrecen, Kossuth u. 5.', '87654321-2-34');
   insertClient.run('Demo Zrt.', 'Szeged, Petőfi tér 3.', '23456789-3-56');
+  insertClient.run('Alfa Kft.', 'Pécs, Dózsa Gy. út 12.', '34567890-4-78');
+  insertClient.run('Omega Bt.', 'Győr, Rákóczi út 20.', '45678901-5-89');
 }
 
 const existingInvoices = db.prepare('SELECT COUNT(*) AS count FROM invoices').get();
 if (existingInvoices.count === 0) {
   const insertInvoice = db.prepare(`
-    INSERT INTO invoices (number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO invoices (
+      number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+
   const issuerId = db.prepare("SELECT id FROM clients WHERE name = 'Teszt Cég Kft.'").get().id;
-  const clients = db.prepare("SELECT id FROM clients WHERE name != 'Teszt Cég Kft.'").all();
+  const clients = db.prepare("SELECT id, name FROM clients WHERE id != ?").all(issuerId);
+
 
   let count = 1;
   for (const client of clients) {
-    for (let i = 0; i < 3; i++) {
-      const today = new Date();
-      const dateStr = today.toISOString().slice(0, 10);
+    
+    const invoicesData = [
+      { total: 15000, vat: 27, daysAgo: 10 },
+      { total: 23500, vat: 27, daysAgo: 20 },
+      { total: 9800, vat: 5, daysAgo: 5 },
+    ];
+
+    for (const inv of invoicesData) {
+      const dateObj = new Date();
+      dateObj.setDate(dateObj.getDate() - inv.daysAgo);
+      const dateStr = dateObj.toISOString().slice(0, 10);
+      const dueDateObj = new Date(dateObj);
+      dueDateObj.setDate(dueDateObj.getDate() + 30);
+      const dueDateStr = dueDateObj.toISOString().slice(0, 10);
+
+   
+      const number = `SZAMLA-2025-${String(count).padStart(3, '0')}`;
+
       insertInvoice.run(
-        `SZAMLA-2025-${count}`,
+        number,
         issuerId,
         client.id,
-        dateStr,
-        dateStr,
-        dateStr,
-        10000 + count * 1000,
-        27
+        dateStr,        
+        dateStr,       
+        dueDateStr,     
+        inv.total,
+        inv.vat
       );
+
       count++;
     }
   }
