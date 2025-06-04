@@ -1,6 +1,5 @@
 function numberToHungarianWords(num) {
   if (typeof num !== 'number' || !Number.isFinite(num)) return '';
-
   if (num === 0) return 'nulla';
 
   const ones = ['', 'egy', 'kettő', 'három', 'négy', 'öt', 'hat', 'hét', 'nyolc', 'kilenc'];
@@ -42,7 +41,6 @@ function numberToHungarianWords(num) {
 
   let words = '';
   let groupIndex = 0;
-  let previousGroup = '';
 
   while (num > 0) {
     const threeDigits = num % 1000;
@@ -50,20 +48,13 @@ function numberToHungarianWords(num) {
     if (threeDigits !== 0) {
       let prefix = '';
 
-      if (groupIndex === 1) { 
-        if (threeDigits === 1) {
-          prefix = 'ezer';
-        } else {
-          prefix = threeDigitToWords(threeDigits) + 'ezer';
-        }
-        if (words && words.length > 0) {
-          prefix += '-';
-        }
-      } else if (groupIndex > 1) { 
+      if (groupIndex === 1) {
+        if (threeDigits === 1) prefix = 'ezer';
+        else prefix = threeDigitToWords(threeDigits) + 'ezer';
+        if (words) prefix += '-';
+      } else if (groupIndex > 1) {
         prefix = threeDigitToWords(threeDigits) + thousands[groupIndex];
-        if (words && words.length > 0) {
-          prefix += '-';
-        }
+        if (words) prefix += '-';
       } else {
         prefix = threeDigitToWords(threeDigits);
       }
@@ -75,13 +66,8 @@ function numberToHungarianWords(num) {
     groupIndex++;
   }
 
-  if (words.endsWith('-')) {
-    words = words.slice(0, -1);
-  }
-
   return words || 'nulla';
 }
-
 
 
 async function loadInvoices() {
@@ -101,7 +87,7 @@ async function loadInvoices() {
       <div class="invoice ${inv.canceled ? 'canceled' : ''}" style="border:1px solid #ccc; padding: 15px; margin-bottom: 20px;">
         ${inv.canceled ? '<div style="color:red; font-weight:bold;">STORNÓ</div>' : ''}
         <h2 style="text-align:center;">Számla sorszáma: #${inv.number}</h2>
-        
+
         <div style="display:flex; justify-content: space-between; margin-bottom: 10px;">
           <div style="width: 48%;">
             <h4>Eladó:</h4>
@@ -120,7 +106,8 @@ async function loadInvoices() {
         <div style="margin-bottom: 10px;">
           <strong>Kelte:</strong> ${inv.date}<br>
           <strong>Teljesítés:</strong> ${inv.fulfillmentDate}<br>
-          <strong>Fizetési határidő:</strong> ${inv.dueDate}
+          <strong>Fizetési határidő:</strong> ${inv.dueDate}<br>
+          <strong>Fizetési mód:</strong> ${inv.paymentMethod || '-'}
         </div>
 
         <table style="width:100%; border-collapse: collapse; margin-top: 10px;">
@@ -181,6 +168,13 @@ function showInvoiceForm() {
           <input name="dueDate" type="text" placeholder="Fizetési határidő (YYYY-MM-DD)" required />
           <input name="total" type="number" placeholder="Végösszeg (nettó összeg Ft)" required />
           <input name="vat" type="number" placeholder="ÁFA kulcs (%) pl. 27" required />
+
+          <select name="paymentMethod" required>
+            <option value="">-- Fizetési mód --</option>
+            <option value="Átutalás">Átutalás</option>
+            <option value="Készpénz">Készpénz</option>
+          </select>
+
           <button type="submit">Mentés</button>
           <button type="button" onclick="loadInvoices()">Mégse</button>
         </form>
@@ -188,6 +182,7 @@ function showInvoiceForm() {
       document.getElementById('list-section').innerHTML = '';
     });
 }
+
 
 function isValidDate(dateStr) {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
@@ -224,22 +219,23 @@ function submitInvoice(e) {
   const fulfillmentDate = new Date(data.fulfillmentDate);
   const dueDate = new Date(data.dueDate);
 
-
   if (invoiceDate < fulfillmentDate) {
     alert('A számla kelte nem lehet korábbi, mint a teljesítés dátuma!');
     return;
   }
 
-  const diffTime = dueDate - invoiceDate;
-  const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
+  const diffDays = (dueDate - invoiceDate) / (1000 * 60 * 60 * 24);
   if (diffDays < 0) {
     alert('A fizetési határidő nem lehet korábbi, mint a számla kelte!');
     return;
   }
-
   if (diffDays > 30) {
     alert('A fizetési határidő legfeljebb 30 nappal lehet későbbi a számla keltezésénél!');
+    return;
+  }
+
+  if (!['Átutalás', 'Készpénz'].includes(data.paymentMethod)) {
+    alert('A fizetési mód csak "Átutalás" vagy "Készpénz" lehet!');
     return;
   }
 
@@ -256,7 +252,6 @@ function submitInvoice(e) {
     }
   });
 }
-
 
 
 function showClientForm() {

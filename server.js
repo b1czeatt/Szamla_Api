@@ -69,15 +69,16 @@ app.post('/api/clients', (req, res) => {
 });
 
 app.post('/api/invoices', (req, res) => {
-  const { number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat } = req.body;
+  const { number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat, paymentMethod } = req.body;
 
-  if (!number || !issuerId || !clientId || !date || !fulfillmentDate || !dueDate || total === undefined || vat === undefined) {
+  if (!number || !issuerId || !clientId || !date || !fulfillmentDate || !dueDate || total === undefined || vat === undefined || !paymentMethod) {
     return res.status(400).send('Minden mező kitöltése kötelező!');
   }
 
   if (typeof total !== 'number' && typeof total !== 'string') {
     return res.status(400).send('Az összeg érvénytelen!');
   }
+
   const totalNum = Number(total);
   if (isNaN(totalNum) || totalNum <= 0) {
     return res.status(400).send('Az összeg nem lehet nulla vagy negatív!');
@@ -103,15 +104,14 @@ app.post('/api/invoices', (req, res) => {
 
   try {
     db.prepare(`
-      INSERT INTO invoices (number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(number, issuerId, clientId, date, fulfillmentDate, dueDate, totalNum, vat);
+      INSERT INTO invoices (number, issuerId, clientId, date, fulfillmentDate, dueDate, total, vat, paymentMethod)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(number, issuerId, clientId, date, fulfillmentDate, dueDate, totalNum, vat, paymentMethod);
     res.sendStatus(200);
   } catch (err) {
     res.status(400).send('A számlaszám már létezik vagy egyéb adatbázis hiba!');
   }
 });
-
 
 app.post('/api/invoices/:id/cancel', (req, res) => {
   const id = req.params.id;
