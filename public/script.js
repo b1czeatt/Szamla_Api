@@ -188,7 +188,7 @@ function isValidDate(dateStr) {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
 }
 
-function submitInvoice(e) {
+async function submitInvoice(e) {
   e.preventDefault();
   const form = e.target;
   const data = Object.fromEntries(new FormData(form).entries());
@@ -234,8 +234,22 @@ function submitInvoice(e) {
     return;
   }
 
-  if (!['Átutalás', 'Készpénz'].includes(data.paymentMethod)) {
-    alert('A fizetési mód csak "Átutalás" vagy "Készpénz" lehet!');
+  if (!['Átutalás','Bankkártya', 'Készpénz'].includes(data.paymentMethod)) {
+    alert('A fizetési mód csak "Átutalás", "Bankkártya" vagy "Készpénz" lehet!');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/invoices');
+    if (!res.ok) throw new Error('Nem sikerült lekérni a számlákat');
+    const invoices = await res.json();
+
+    if (invoices.some(inv => inv.number === data.number)) {
+      alert('Ez a számlaszám már létezik!');
+      return;
+    }
+  } catch (err) {
+    alert('Hiba történt a számlák ellenőrzése során: ' + err.message);
     return;
   }
 
