@@ -283,15 +283,53 @@ function submitClient(e) {
   e.preventDefault();
   const form = e.target;
   const data = Object.fromEntries(new FormData(form).entries());
+
+  const namePattern = /^[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰ\s\-]+$/;
+  if (!data.name || /^\s*$/.test(data.name)) {
+    alert('A név megadása kötelező!');
+    return;
+  }
+  if (!namePattern.test(data.name)) {
+    alert('A név csak betűket, szóközt és kötőjelet tartalmazhat!');
+    return;
+  }
+
+  if (!data.address || /^\s*$/.test(data.address)) {
+    alert('A cím megadása kötelező!');
+    return;
+  }
+
+  if (/-\d+/.test(data.address)) {
+  alert('A cím nem tartalmazhat negatív számot!');
+  return;
+}
+
+  const taxPattern = /^\d+$/;
+  if (!data.taxNumber || !taxPattern.test(data.taxNumber)) {
+    alert('Az adószám csak pozitív szám lehet, és nem lehet üres!');
+    return;
+  }
+
   fetch('/api/clients', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   }).then(res => {
-    if (res.ok) alert('Kiállító mentve');
-    else res.text().then(alert);
+    if (res.ok) {
+      alert('Kiállító mentve');
+      form.reset();
+      loadInvoices(); 
+    } else {
+      res.text().then(text => {
+        alert('Hiba: ' + text);
+      });
+    }
+  }).catch(err => {
+    alert('Hálózati hiba történt: ' + err.message);
   });
 }
+
+
 
 function cancelInvoice(id) {
   if (!confirm('Biztos stornózod ezt a számlát?')) return;
